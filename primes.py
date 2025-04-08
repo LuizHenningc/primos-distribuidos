@@ -3,46 +3,46 @@ import math
 import sys
 from mpi4py import MPI
 
-# Initialize MPI
+# Inicializa o MPI
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
 
-# Check if there are at least 2 processes
+# Verifica se há pelo menos 2 processos
 if size < 2:
     if rank == 0:
-        print("This program requires at least 2 processes.")
+        print("Este programa requer pelo menos 2 processos.")
     comm.Barrier()
     MPI.COMM_WORLD.Abort(1)
 
-# Get N from command line or default to 1000000
+# Obtém N a partir da linha de comando ou usa o valor padrão de 1000000
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
 else:
     N = 1000000
 
-# Calculate the block size for each process
+# Calcula o tamanho do bloco para cada processo
 block_size = math.ceil((N - 1) / size)
 start = 2 + rank * block_size
 end = min(start + block_size - 1, N)
 segment_size = end - start + 1
 
-# Function to mark multiples in a segment
+# Função para marcar múltiplos em um segmento
 def mark_multiples(is_prime, start, end, prime):
     first_multiple = start if start % prime == 0 else start + (prime - start % prime)
     for i in range(max(first_multiple, prime * prime), end + 1, prime):
         is_prime[i - start] = False
 
-# Each process sieves its own segment
+# Cada processo realiza o crivo em seu próprio segmento
 if segment_size > 0:
     is_prime = [True] * segment_size
     if start <= 2 <= end:
         is_prime[2 - start] = True
     else:
-        is_prime[0] = False  # Avoid index errors
+        is_prime[0] = False  # Evita erros de índice
     sqrt_N = math.isqrt(N)
 
-    # Initial primes from rank 0
+    # Primos iniciais do rank 0
     if rank == 0:
         initial_primes = [2]
         for i in range(3, min(sqrt_N + 1, end + 1), 2):
@@ -52,29 +52,29 @@ if segment_size > 0:
     else:
         initial_primes = None
 
-    # Broadcast initial primes
+    # Transmitindo os primos iniciais
     initial_primes = comm.bcast(initial_primes, root=0)
 
-    # Mark multiples of initial primes
+    # Marca os múltiplos dos primos iniciais
     for p in initial_primes:
         mark_multiples(is_prime, start, end, p)
 
-    # Find and share new primes up to sqrt(N)
+    # Encontra e compartilha novos primos até sqrt(N)
     local_primes = []
     for i in range(start, end + 1):
         if is_prime[i - start]:
             if i <= sqrt_N:
-                print(f"Rank {rank} found prime {i}")
+                print(f"Rank {rank} encontrou o primo {i}")
                 comm.bcast(i, root=rank)
                 mark_multiples(is_prime, start, end, i)
             local_primes.append(i)
 
-    # Gather all local primes
+    # Coleta todos os primos locais
     all_primes = comm.gather(local_primes, root=0)
 else:
     all_primes = comm.gather([], root=0)
 
-# On root process, combine and print
+# No processo raiz, combina e imprime
 if rank == 0:
     primes = sorted([p for sublist in all_primes for p in sublist])
-    print(f"Primes up to {N}: {primes}")
+    print(f"Primos até {N}: {primes}")
